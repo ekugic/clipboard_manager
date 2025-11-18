@@ -4,8 +4,8 @@ use crate::ui::list_item::create_list_row;
 use crate::ui::styles::apply_styles;
 use gtk4::prelude::*;
 use gtk4::{
-    glib, Box, Label, ListBox, Orientation, ScrolledWindow, 
-    SelectionMode, PolicyType, EventControllerKey, gdk, Image,
+    glib, Box, ListBox, Orientation, ScrolledWindow, 
+    SelectionMode, PolicyType, EventControllerKey, gdk,
 };
 use libadwaita as adw;
 use libadwaita::prelude::*;
@@ -20,32 +20,23 @@ pub fn build_ui(app: &adw::Application) {
         .application(app)
         .default_width(450)
         .default_height(600)
-        .decorated(false)
+        .decorated(false) // No OS Title bar
         .resizable(false)
         .build();
 
     apply_styles();
 
+    // Main container (The "Popup" box)
     let main_box = Box::new(Orientation::Vertical, 0);
     main_box.add_css_class("popup-window");
     
-    let header_box = Box::new(Orientation::Horizontal, 12);
-    header_box.add_css_class("popup-header");
-    
-    let header_icon = Image::from_icon_name("edit-paste-symbolic");
-    header_icon.set_pixel_size(20);
-    header_box.append(&header_icon);
+    // Add small padding so items don't touch the window edges
+    main_box.set_margin_top(6);
+    main_box.set_margin_bottom(6);
+    main_box.set_margin_start(6);
+    main_box.set_margin_end(6);
 
-
-    let title_label = Label::new(Some("Clipboard History"));
-    title_label.add_css_class("popup-title");
-    header_box.append(&title_label);
-    
-    main_box.append(&header_box);
-
-    let separator = gtk4::Separator::new(Orientation::Horizontal);
-    separator.add_css_class("popup-separator");
-    main_box.append(&separator);
+    // --- NO HEADER, NO SEPARATOR ---
 
     let scrolled_window = ScrolledWindow::builder()
         .hscrollbar_policy(PolicyType::Never)
@@ -61,6 +52,7 @@ pub fn build_ui(app: &adw::Application) {
     let list_box_ref = Arc::new(Mutex::new(list_box.clone()));
     let list_box_clone = Arc::clone(&list_box_ref);
 
+    // Initial load
     {
         let mgr = manager.lock().unwrap();
         refresh_list(mgr.get_items(), &list_box);
@@ -95,6 +87,7 @@ pub fn build_ui(app: &adw::Application) {
     main_box.append(&scrolled_window);
     window.set_content(Some(&main_box));
 
+    // Keyboard shortcuts (Escape to close)
     let key_controller = EventControllerKey::new();
     let window_clone = window.clone();
     key_controller.connect_key_pressed(move |_, key, _, _| {
@@ -109,7 +102,7 @@ pub fn build_ui(app: &adw::Application) {
     });
     window.add_controller(key_controller);
 
-    // Removed unused window_clone here
+    // Close on focus loss
     window.connect_is_active_notify(move |win| {
         if !win.is_active() {
             win.close();
@@ -118,6 +111,7 @@ pub fn build_ui(app: &adw::Application) {
         }
     });
 
+    // Watcher loop
     glib::timeout_add_local(Duration::from_millis(500), move || {
         let mut mgr = manager_clone.lock().unwrap();
         if mgr.check_clipboard().is_some() {
@@ -140,7 +134,3 @@ fn refresh_list(items: &[ClipboardItem], list_box: &ListBox) {
         list_box.append(&row);
     }
 }
-
-
-
-
