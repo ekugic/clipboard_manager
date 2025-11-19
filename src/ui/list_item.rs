@@ -2,12 +2,10 @@ use crate::models::{ClipboardItem, ClipboardContent};
 use gtk4::prelude::*;
 use gtk4::{Box, Button, Label, ListBoxRow, Orientation, Image};
 
-// ensure 'pub' is here
 pub fn create_list_row(item: &ClipboardItem) -> ListBoxRow {
     let row = ListBoxRow::new();
     row.add_css_class("clipboard-item");
     
-    // Store item ID as data (unsafe)
     unsafe {
         row.set_data("item_id", item.id.clone());
     }
@@ -64,28 +62,6 @@ pub fn create_list_row(item: &ClipboardItem) -> ListBoxRow {
             label.set_max_width_chars(50);
             label.add_css_class("item-text");
             vbox.append(&label);
-            
-            let timestamp_label = Label::new(Some(&item.timestamp));
-            timestamp_label.add_css_class("timestamp");
-            timestamp_label.set_xalign(0.0);
-            vbox.append(&timestamp_label);
-            
-            hbox.append(&vbox);
-        }
-        ClipboardContent::Image(_) => {
-            let vbox = Box::new(Orientation::Vertical, 4);
-            vbox.set_hexpand(true);
-            
-            let content_row = Box::new(Orientation::Horizontal, 8);
-            let img_icon = Image::from_icon_name("image-x-generic-symbolic");
-            content_row.append(&img_icon);
-
-            let label = Label::new(Some("Image"));
-            label.set_xalign(0.0);
-            label.add_css_class("item-text");
-            content_row.append(&label);
-            
-            vbox.append(&content_row);
             
             let timestamp_label = Label::new(Some(&item.timestamp));
             timestamp_label.add_css_class("timestamp");

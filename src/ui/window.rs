@@ -12,7 +12,7 @@ use libadwaita::prelude::*;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-pub fn build_ui(app: &adw::Application) {
+pub fn build_ui(app: &adw::Application) -> adw::ApplicationWindow {
     let manager = Arc::new(Mutex::new(ClipboardManager::new()));
     let manager_clone = Arc::clone(&manager);
 
@@ -20,23 +20,24 @@ pub fn build_ui(app: &adw::Application) {
         .application(app)
         .default_width(450)
         .default_height(600)
-        .decorated(false) // No OS Title bar
+        .decorated(false)
         .resizable(false)
         .build();
 
     apply_styles();
 
-    // Main container (The "Popup" box)
+    // Prevent the window from being destroyed when the user clicks 'X' or closes it
+    window.connect_close_request(|win| {
+        win.set_visible(false); // Replaces win.hide()
+        glib::Propagation::Stop
+    });
+
     let main_box = Box::new(Orientation::Vertical, 0);
     main_box.add_css_class("popup-window");
-    
-    // Add small padding so items don't touch the window edges
     main_box.set_margin_top(6);
     main_box.set_margin_bottom(6);
     main_box.set_margin_start(6);
     main_box.set_margin_end(6);
-
-    // --- NO HEADER, NO SEPARATOR ---
 
     let scrolled_window = ScrolledWindow::builder()
         .hscrollbar_policy(PolicyType::Never)
@@ -52,7 +53,6 @@ pub fn build_ui(app: &adw::Application) {
     let list_box_ref = Arc::new(Mutex::new(list_box.clone()));
     let list_box_clone = Arc::clone(&list_box_ref);
 
-    // Initial load
     {
         let mgr = manager.lock().unwrap();
         refresh_list(mgr.get_items(), &list_box);
@@ -77,9 +77,8 @@ pub fn build_ui(app: &adw::Application) {
                 let _ = mgr.paste_item(&id_str);
                 drop(mgr);
                 
-                window_clone.close();
-                let mut visible = crate::WINDOW_VISIBLE.lock().unwrap();
-                *visible = false;
+                // HIDE instead of CLOSE
+                window_clone.set_visible(false); 
             }
         }
     });
@@ -87,14 +86,11 @@ pub fn build_ui(app: &adw::Application) {
     main_box.append(&scrolled_window);
     window.set_content(Some(&main_box));
 
-    // Keyboard shortcuts (Escape to close)
     let key_controller = EventControllerKey::new();
     let window_clone = window.clone();
     key_controller.connect_key_pressed(move |_, key, _, _| {
         if key == gdk::Key::Escape {
-            window_clone.close();
-            let mut visible = crate::WINDOW_VISIBLE.lock().unwrap();
-            *visible = false;
+            window_clone.set_visible(false); // HIDE
             glib::Propagation::Stop
         } else {
             glib::Propagation::Proceed
@@ -102,16 +98,12 @@ pub fn build_ui(app: &adw::Application) {
     });
     window.add_controller(key_controller);
 
-    // Close on focus loss
     window.connect_is_active_notify(move |win| {
         if !win.is_active() {
-            win.close();
-            let mut visible = crate::WINDOW_VISIBLE.lock().unwrap();
-            *visible = false;
+            win.set_visible(false); // HIDE
         }
     });
 
-    // Watcher loop
     glib::timeout_add_local(Duration::from_millis(500), move || {
         let mut mgr = manager_clone.lock().unwrap();
         if mgr.check_clipboard().is_some() {
@@ -121,7 +113,7 @@ pub fn build_ui(app: &adw::Application) {
         glib::ControlFlow::Continue
     });
 
-    window.present();
+    window
 }
 
 fn refresh_list(items: &[ClipboardItem], list_box: &ListBox) {

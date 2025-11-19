@@ -7,7 +7,7 @@ pub const MAX_ITEM_SIZE: usize = 4 * 1024 * 1024; // 4MB
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum ClipboardContent {
     Text(String),
-    Image(Vec<u8>),
+    // Image support removed for performance testing
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

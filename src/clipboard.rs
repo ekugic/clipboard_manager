@@ -31,7 +31,6 @@ impl ClipboardManager {
         // Check size
         let size = match &content {
             ClipboardContent::Text(text) => text.len(),
-            ClipboardContent::Image(data) => data.len(),
         };
 
         if size > MAX_ITEM_SIZE {
@@ -68,10 +67,7 @@ impl ClipboardManager {
     pub fn toggle_pin(&mut self, id: &str) {
         if let Some(item) = self.items.iter_mut().find(|i| i.id == id) {
             item.pinned = !item.pinned;
-            
-            // Re-sort: pinned items first
             self.items.sort_by_key(|item| !item.pinned);
-            
             let _ = self.storage.save_items(&self.items);
         }
     }
@@ -81,6 +77,8 @@ impl ClipboardManager {
     }
 
     pub fn check_clipboard(&mut self) -> Option<ClipboardContent> {
+        // Re-using clipboard context might be better, but for now this is fine
+        // as long as we don't do it on the UI thread (which we are, but inside a timeout)
         let mut clipboard = Clipboard::new().ok()?;
         
         if let Ok(text) = clipboard.get_text() {
@@ -105,9 +103,6 @@ impl ClipboardManager {
         match &item.content {
             ClipboardContent::Text(text) => {
                 clipboard.set_text(text.clone()).map_err(|e| e.to_string())?;
-            }
-            ClipboardContent::Image(_data) => {
-                return Err("Image clipboard not yet implemented".to_string());
             }
         }
         

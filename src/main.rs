@@ -3,14 +3,10 @@ mod storage;
 mod ui;
 mod models;
 
-use gtk4::prelude::*;
+use gtk4::prelude::*; // Essential for GtkApplicationExt and WidgetExt
 use libadwaita as adw;
-use std::sync::{Arc, Mutex};
-use once_cell::sync::Lazy;
 
 const APP_ID: &str = "com.example.ClipboardManager";
-
-static WINDOW_VISIBLE: Lazy<Arc<Mutex<bool>>> = Lazy::new(|| Arc::new(Mutex::new(false)));
 
 fn main() {
     let app = adw::Application::builder()
@@ -18,25 +14,29 @@ fn main() {
         .flags(gtk4::gio::ApplicationFlags::HANDLES_COMMAND_LINE)
         .build();
 
-    // Handle command line to ensure single instance
+    // 1. Handle command line arguments.
+    // When you trigger your shortcut, it runs the command again.
+    // This signal ensures the existing instance handles the request.
     app.connect_command_line(|app, _| {
         app.activate();
         0
     });
 
+    // 2. Handle activation (Launch or Toggle)
     app.connect_activate(move |app| {
-        let mut visible = WINDOW_VISIBLE.lock().unwrap();
-        
-        if *visible {
-            // Window already exists, just toggle it
-            if let Some(window) = app.active_window() {
-                window.close();
-                *visible = false;
+        // Instead of a global static, we ask the application for its windows.
+        // If the window is hidden, it is STILL in this list.
+        if let Some(window) = app.windows().first() {
+            // Window exists! Toggle visibility.
+            if window.is_visible() {
+                window.set_visible(false);
+            } else {
+                window.present();
             }
         } else {
-            // Create new window
-            ui::window::build_ui(app);
-            *visible = true;
+            // No window found (First run). Create it.
+            let window = ui::window::build_ui(app);
+            window.present();
         }
     });
 
