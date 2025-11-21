@@ -5,7 +5,6 @@ pub fn apply_styles() {
     let css = CssProvider::new();
     css.load_from_string(
         r#"
-        /* Main Container - Minimalist Box */
         .popup-window {
             background: @theme_bg_color;
             border-radius: 12px;
@@ -16,10 +15,9 @@ pub fn apply_styles() {
             background: transparent;
         }
         
-        /* List Items */
         .clipboard-item {
             padding: 6px;
-            margin: 2px 4px; /* Tighter spacing */
+            margin: 2px 4px; 
             border-radius: 6px;
             transition: background 150ms ease;
         }
@@ -32,10 +30,12 @@ pub fn apply_styles() {
             background: alpha(@theme_fg_color, 0.1);
         }
         
-        /* Pin Button */
+        /* Pin Button Updates */
         .pin-button {
-            padding: 8px;
-            border-radius: 100%;
+            min-width: 32px;   /* Fixed width */
+            min-height: 32px;  /* Fixed height */
+            padding: 0;        /* Remove padding to prevent oval shapes */
+            border-radius: 999px; /* Perfect circle */
             opacity: 0.3;
             transition: all 200ms;
         }
@@ -48,6 +48,7 @@ pub fn apply_styles() {
         .pin-button.pinned {
             opacity: 1.0;
             color: @theme_selected_bg_color;
+            background: alpha(@theme_selected_bg_color, 0.1);
         }
         
         .item-text {

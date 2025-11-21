@@ -1,6 +1,6 @@
 use crate::models::{ClipboardItem, ClipboardContent};
 use gtk4::prelude::*;
-use gtk4::{Box, Button, Label, ListBoxRow, Orientation, Image};
+use gtk4::{Box, Button, Label, ListBoxRow, Orientation, Image, Align};
 
 pub fn create_list_row(item: &ClipboardItem) -> ListBoxRow {
     let row = ListBoxRow::new();
@@ -16,38 +16,11 @@ pub fn create_list_row(item: &ClipboardItem) -> ListBoxRow {
     hbox.set_margin_start(12);
     hbox.set_margin_end(12);
     
-    // --- Pin Button ---
-    let pin_button = Button::new();
-    pin_button.add_css_class("pin-button");
-    pin_button.add_css_class("flat");
-    
-    let icon_name = if item.pinned { "view-pin-symbolic" } else { "view-pin-symbolic" }; 
-    let pin_icon = Image::from_icon_name(icon_name);
-    pin_button.set_child(Some(&pin_icon));
-
-    if item.pinned {
-        pin_button.add_css_class("pinned");
-    } else {
-        pin_button.add_css_class("unpinned"); 
-    }
-    
-    let row_weak = row.downgrade();
-    pin_button.connect_clicked(move |_| {
-        if let Some(row) = row_weak.upgrade() {
-            unsafe {
-                row.set_data("is_pin_click", true);
-            }
-            row.activate();
-        }
-    });
-    
-    hbox.append(&pin_button);
-    
-    // --- Content Area ---
+    // --- Content Area (Now FIRST) ---
     match &item.content {
         ClipboardContent::Text(text) => {
             let vbox = Box::new(Orientation::Vertical, 4);
-            vbox.set_hexpand(true);
+            vbox.set_hexpand(true); // Push the pin button to the right
             
             let preview = if text.len() > 150 {
                 format!("{}...", &text[..150])
@@ -71,6 +44,37 @@ pub fn create_list_row(item: &ClipboardItem) -> ListBoxRow {
             hbox.append(&vbox);
         }
     }
+    
+    // --- Pin Button (Now SECOND) ---
+    let pin_button = Button::new();
+    pin_button.add_css_class("pin-button");
+    pin_button.add_css_class("flat");
+    
+    // Fix: Center vertically so it doesn't stretch on multi-line items
+    pin_button.set_valign(Align::Center); 
+    pin_button.set_halign(Align::Center);
+
+    let icon_name = "view-pin-symbolic"; // Cleaned up logic
+    let pin_icon = Image::from_icon_name(icon_name);
+    pin_button.set_child(Some(&pin_icon));
+
+    if item.pinned {
+        pin_button.add_css_class("pinned");
+    } else {
+        pin_button.add_css_class("unpinned"); 
+    }
+    
+    let row_weak = row.downgrade();
+    pin_button.connect_clicked(move |_| {
+        if let Some(row) = row_weak.upgrade() {
+            unsafe {
+                row.set_data("is_pin_click", true);
+            }
+            row.activate();
+        }
+    });
+    
+    hbox.append(&pin_button);
     
     row.set_child(Some(&hbox));
     row

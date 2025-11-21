@@ -10,11 +10,12 @@ use gtk4::{
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use std::sync::{Arc, Mutex};
+use std::thread;
 use std::time::Duration;
 
 pub fn build_ui(app: &adw::Application) -> adw::ApplicationWindow {
+    // Arc<Mutex<>> is still useful for sharing state between UI callbacks
     let manager = Arc::new(Mutex::new(ClipboardManager::new()));
-    let manager_clone = Arc::clone(&manager);
 
     let window = adw::ApplicationWindow::builder()
         .application(app)
@@ -26,9 +27,8 @@ pub fn build_ui(app: &adw::Application) -> adw::ApplicationWindow {
 
     apply_styles();
 
-    // Prevent the window from being destroyed when the user clicks 'X' or closes it
     window.connect_close_request(|win| {
-        win.set_visible(false); // Replaces win.hide()
+        win.set_visible(false);
         glib::Propagation::Stop
     });
 
@@ -50,14 +50,13 @@ pub fn build_ui(app: &adw::Application) -> adw::ApplicationWindow {
     list_box.add_css_class("popup-list");
     scrolled_window.set_child(Some(&list_box));
 
-    let list_box_ref = Arc::new(Mutex::new(list_box.clone()));
-    let list_box_clone = Arc::clone(&list_box_ref);
-
+    // Initial Load
     {
         let mgr = manager.lock().unwrap();
         refresh_list(mgr.get_items(), &list_box);
     }
 
+    // --- CLICK HANDLING ---
     let window_clone = window.clone();
     let manager_click = Arc::clone(&manager);
     
@@ -76,8 +75,6 @@ pub fn build_ui(app: &adw::Application) -> adw::ApplicationWindow {
                 let mgr = manager_click.lock().unwrap();
                 let _ = mgr.paste_item(&id_str);
                 drop(mgr);
-                
-                // HIDE instead of CLOSE
                 window_clone.set_visible(false); 
             }
         }
@@ -86,11 +83,12 @@ pub fn build_ui(app: &adw::Application) -> adw::ApplicationWindow {
     main_box.append(&scrolled_window);
     window.set_content(Some(&main_box));
 
+    // --- KEYBOARD HANDLING ---
     let key_controller = EventControllerKey::new();
     let window_clone = window.clone();
     key_controller.connect_key_pressed(move |_, key, _, _| {
         if key == gdk::Key::Escape {
-            window_clone.set_visible(false); // HIDE
+            window_clone.set_visible(false);
             glib::Propagation::Stop
         } else {
             glib::Propagation::Proceed
@@ -100,16 +98,33 @@ pub fn build_ui(app: &adw::Application) -> adw::ApplicationWindow {
 
     window.connect_is_active_notify(move |win| {
         if !win.is_active() {
-            win.set_visible(false); // HIDE
+            win.set_visible(false);
         }
     });
 
-    glib::timeout_add_local(Duration::from_millis(500), move || {
-        let mut mgr = manager_clone.lock().unwrap();
-        if mgr.check_clipboard().is_some() {
-            let list = list_box_clone.lock().unwrap();
-            refresh_list(mgr.get_items(), &list);
+    // --- BACKGROUND THREAD FOR CLIPBOARD POLLING ---
+    // We use a channel to communicate from the background thread to the UI thread.
+    let (sender, receiver) = glib::MainContext::channel(glib::Priority::DEFAULT);
+    let manager_thread = Arc::clone(&manager);
+
+    thread::spawn(move || {
+        loop {
+            thread::sleep(Duration::from_millis(500));
+            
+            let mut mgr = manager_thread.lock().unwrap();
+            // This check happens in the background. Heavy I/O here won't freeze UI.
+            if mgr.check_clipboard().is_some() {
+                // If we found something, send a signal to the UI thread
+                let items = mgr.get_items().to_vec(); // Clone items to send across threads
+                let _ = sender.send(items);
+            }
         }
+    });
+
+    // Listen for updates on the UI thread
+    let list_box_clone = list_box.clone();
+    receiver.attach(None, move |items| {
+        refresh_list(&items, &list_box_clone);
         glib::ControlFlow::Continue
     });
 

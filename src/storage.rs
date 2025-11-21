@@ -1,6 +1,7 @@
 use crate::models::ClipboardItem;
 use dirs;
-use std::fs;
+use std::fs::{self, File};
+use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
 
 pub struct Storage {
@@ -18,19 +19,33 @@ impl Storage {
 
     pub fn save_items(&self, items: &[ClipboardItem]) -> std::io::Result<()> {
         let mut path = self.data_dir.clone();
-        path.push("clipboard_history.json");
-        let json = serde_json::to_string_pretty(&items)?;
-        fs::write(path, json)?;
-        Ok(())
+        path.push("clipboard_history.bin"); // Changed extension
+        
+        // Use BufWriter for performance
+        let file = File::create(path)?;
+        let writer = BufWriter::new(file);
+        
+        // Serialize using Bincode (fast binary format)
+        bincode::serialize_into(writer, items)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
     }
 
     pub fn load_items(&self) -> std::io::Result<Vec<ClipboardItem>> {
         let mut path = self.data_dir.clone();
-        path.push("clipboard_history.json");
+        path.push("clipboard_history.bin");
         
         if path.exists() {
-            let json = fs::read_to_string(path)?;
-            Ok(serde_json::from_str(&json).unwrap_or_default())
+            let file = File::open(path)?;
+            let reader = BufReader::new(file);
+            
+            // deserialization
+            match bincode::deserialize_from(reader) {
+                Ok(items) => Ok(items),
+                Err(_) => {
+                    // Fallback: If format changed or corrupt, start fresh
+                    Ok(Vec::new()) 
+                }
+            }
         } else {
             Ok(Vec::new())
         }
