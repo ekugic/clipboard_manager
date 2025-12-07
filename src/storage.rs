@@ -3,9 +3,12 @@ use dirs;
 use std::fs::{self, File};
 use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
+use std::sync::mpsc;
+use std::thread;
 
 pub struct Storage {
     data_dir: PathBuf,
+    save_sender: mpsc::Sender<Vec<ClipboardItem>>,
 }
 
 impl Storage {
@@ -14,40 +17,51 @@ impl Storage {
         data_dir.push("clipboard_manager");
         let _ = fs::create_dir_all(&data_dir);
         
-        Self { data_dir }
-    }
-
-    pub fn save_items(&self, items: &[ClipboardItem]) -> std::io::Result<()> {
-        let mut path = self.data_dir.clone();
-        path.push("clipboard_history.bin"); // Changed extension
+        // Spawn async save thread
+        let (tx, rx) = mpsc::channel::<Vec<ClipboardItem>>();
+        let save_path = data_dir.join("clipboard_history.bin");
         
-        // Use BufWriter for performance
-        let file = File::create(path)?;
-        let writer = BufWriter::new(file);
-        
-        // Serialize using Bincode (fast binary format)
-        bincode::serialize_into(writer, items)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
-    }
-
-    pub fn load_items(&self) -> std::io::Result<Vec<ClipboardItem>> {
-        let mut path = self.data_dir.clone();
-        path.push("clipboard_history.bin");
-        
-        if path.exists() {
-            let file = File::open(path)?;
-            let reader = BufReader::new(file);
-            
-            // deserialization
-            match bincode::deserialize_from(reader) {
-                Ok(items) => Ok(items),
-                Err(_) => {
-                    // Fallback: If format changed or corrupt, start fresh
-                    Ok(Vec::new()) 
+        thread::spawn(move || {
+            while let Ok(items) = rx.recv() {
+                // Only save the latest - skip old queued saves
+                let mut latest_items = items;
+                while let Ok(newer_items) = rx.try_recv() {
+                    latest_items = newer_items;
+                }
+                
+                if let Ok(file) = File::create(&save_path) {
+                    let writer = BufWriter::new(file);
+                    let _ = bincode::serialize_into(writer, &latest_items);
                 }
             }
-        } else {
-            Ok(Vec::new())
+        });
+        
+        Self { 
+            data_dir,
+            save_sender: tx,
         }
+    }
+
+    /// Non-blocking async save
+    pub fn save_items_async(&self, items: &[ClipboardItem]) {
+        let _ = self.save_sender.send(items.to_vec());
+    }
+
+    pub fn load_items(&self) -> Vec<ClipboardItem> {
+        let path = self.data_dir.join("clipboard_history.bin");
+        
+        if path.exists() {
+            if let Ok(file) = File::open(path) {
+                let reader = BufReader::new(file);
+                if let Ok(mut items) = bincode::deserialize_from::<_, Vec<ClipboardItem>>(reader) {
+                    // Recompute hashes after load
+                    for item in &mut items {
+                        *item = item.clone().with_hash();
+                    }
+                    return items;
+                }
+            }
+        }
+        Vec::new()
     }
 }

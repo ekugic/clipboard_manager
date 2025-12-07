@@ -15,7 +15,6 @@ fn main() {
         .flags(gtk4::gio::ApplicationFlags::HANDLES_COMMAND_LINE)
         .build();
     
-    // Store window in app data
     let window_ref: RefCell<Option<adw::ApplicationWindow>> = RefCell::new(None);
     
     app.connect_command_line(|app, _| {

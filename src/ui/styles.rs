@@ -18,7 +18,7 @@ pub fn apply_styles() {
             padding: 6px;
             margin: 2px 4px; 
             border-radius: 6px;
-            transition: background 150ms ease;
+            transition: background 100ms ease;
         }
         
         .clipboard-item:hover {
@@ -29,14 +29,13 @@ pub fn apply_styles() {
             background: alpha(@theme_fg_color, 0.1);
         }
         
-        /* Pin Button Updates */
         .pin-button {
-            min-width: 32px;   /* Fixed width */
-            min-height: 32px;  /* Fixed height */
-            padding: 0;        /* Remove padding to prevent oval shapes */
-            border-radius: 999px; /* Perfect circle */
+            min-width: 32px;
+            min-height: 32px;
+            padding: 0;
+            border-radius: 999px;
             opacity: 0.3;
-            transition: all 200ms;
+            transition: all 150ms;
         }
         
         .pin-button:hover {

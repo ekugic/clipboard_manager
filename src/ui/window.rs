@@ -1,4 +1,4 @@
-use crate::clipboard::ClipboardManager;
+use crate::clipboard::SharedClipboardManager;
 use crate::models::ClipboardItem;
 use crate::ui::list_item::create_list_row;
 use crate::ui::styles::apply_styles;
@@ -9,13 +9,18 @@ use gtk4::{
 };
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
+use crossbeam_channel::{bounded, Sender, Receiver};
+
+// Message types for the UI
+enum UiMessage {
+    ItemsChanged(Vec<ClipboardItem>),
+}
 
 pub fn build_ui(app: &adw::Application) -> adw::ApplicationWindow {
-    // Arc<Mutex<>> is still useful for sharing state between UI callbacks
-    let manager = Arc::new(Mutex::new(ClipboardManager::new()));
+    let manager = SharedClipboardManager::new();
 
     let window = adw::ApplicationWindow::builder()
         .application(app)
@@ -50,20 +55,12 @@ pub fn build_ui(app: &adw::Application) -> adw::ApplicationWindow {
     list_box.add_css_class("popup-list");
     scrolled_window.set_child(Some(&list_box));
 
-    // Initial Load
-   // In build_ui(), change initial load:
+    // Initial Load - show all items immediately
     {
-        let mgr = manager.lock().unwrap();
-        let items = mgr.get_items();
-        let recent_items = if items.len() > 15 {
-            &items[..15]  // Only show 15 most recent on startup
-        } else {
-            items
-        };
-        refresh_list(recent_items, &list_box);
+        let mgr = manager.0.read();
+        refresh_list(mgr.get_items(), &list_box);
     }
 
-    
     // --- CLICK HANDLING ---
     let window_clone = window.clone();
     let manager_click = Arc::clone(&manager);
@@ -76,11 +73,11 @@ pub fn build_ui(app: &adw::Application) -> adw::ApplicationWindow {
             let is_pin_click = unsafe { row.data::<bool>("is_pin_click") }.is_some();
 
             if is_pin_click {
-                let mut mgr = manager_click.lock().unwrap();
+                let mut mgr = manager_click.0.write();
                 mgr.toggle_pin(&id_str);
                 refresh_list(mgr.get_items(), list);
             } else {
-                let mgr = manager_click.lock().unwrap();
+                let mut mgr = manager_click.0.write();
                 let _ = mgr.paste_item(&id_str);
                 drop(mgr);
                 window_clone.set_visible(false); 
@@ -110,29 +107,54 @@ pub fn build_ui(app: &adw::Application) -> adw::ApplicationWindow {
         }
     });
 
-    // --- BACKGROUND THREAD FOR CLIPBOARD POLLING ---
-    // We use a channel to communicate from the background thread to the UI thread.
-    let (sender, receiver) = glib::MainContext::channel(glib::Priority::DEFAULT);
+    // --- ULTRA-FAST BACKGROUND POLLING ---
+    // Use bounded channel for backpressure
+    let (sender, receiver): (Sender<UiMessage>, Receiver<UiMessage>) = bounded(4);
     let manager_thread = Arc::clone(&manager);
 
+    // High-frequency polling thread
     thread::spawn(move || {
+        let mut refresh_counter = 0u32;
+        
         loop {
-            thread::sleep(Duration::from_millis(500));
+            // Poll every 20ms = 50 times per second
+            thread::sleep(Duration::from_millis(20));
             
-            let mut mgr = manager_thread.lock().unwrap();
-            // This check happens in the background. Heavy I/O here won't freeze UI.
-            if mgr.check_clipboard().is_some() {
-                // If we found something, send a signal to the UI thread
-                let items = mgr.get_items().to_vec(); // Clone items to send across threads
-                let _ = sender.send(items);
+            let mut mgr = manager_thread.0.write();
+            
+            // Check clipboard
+            if mgr.check_clipboard_fast() {
+                let items = mgr.get_items().to_vec();
+                let _ = sender.try_send(UiMessage::ItemsChanged(items));
+            }
+            
+            // Refresh clipboard connection every ~5 seconds (250 iterations)
+            refresh_counter += 1;
+            if refresh_counter >= 250 {
+                refresh_counter = 0;
+                mgr.refresh_clipboard();
             }
         }
     });
 
-    // Listen for updates on the UI thread
+    // UI update receiver using glib channel
+    let (glib_sender, glib_receiver) = glib::MainContext::channel(glib::Priority::HIGH);
+    
+    // Bridge crossbeam -> glib
+    thread::spawn(move || {
+        while let Ok(msg) = receiver.recv() {
+            let _ = glib_sender.send(msg);
+        }
+    });
+
+    // Handle UI updates on main thread
     let list_box_clone = list_box.clone();
-    receiver.attach(None, move |items| {
-        refresh_list(&items, &list_box_clone);
+    glib_receiver.attach(None, move |msg| {
+        match msg {
+            UiMessage::ItemsChanged(items) => {
+                refresh_list(&items, &list_box_clone);
+            }
+        }
         glib::ControlFlow::Continue
     });
 
@@ -140,10 +162,12 @@ pub fn build_ui(app: &adw::Application) -> adw::ApplicationWindow {
 }
 
 fn refresh_list(items: &[ClipboardItem], list_box: &ListBox) {
+    // Fast clear
     while let Some(child) = list_box.first_child() {
         list_box.remove(&child);
     }
     
+    // Add all items
     for item in items {
         let row = create_list_row(item);
         list_box.append(&row);
