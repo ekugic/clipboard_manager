@@ -17,20 +17,20 @@ impl Storage {
         data_dir.push("clipboard_manager");
         let _ = fs::create_dir_all(&data_dir);
         
-        // Spawn async save thread
         let (tx, rx) = mpsc::channel::<Vec<ClipboardItem>>();
         let save_path = data_dir.join("clipboard_history.bin");
         
+        // Async save thread
         thread::spawn(move || {
             while let Ok(items) = rx.recv() {
-                // Only save the latest - skip old queued saves
+                // Only save the latest
                 let mut latest_items = items;
                 while let Ok(newer_items) = rx.try_recv() {
                     latest_items = newer_items;
                 }
                 
                 if let Ok(file) = File::create(&save_path) {
-                    let writer = BufWriter::new(file);
+                    let writer = BufWriter::with_capacity(1024 * 1024, file); // 1MB buffer for images
                     let _ = bincode::serialize_into(writer, &latest_items);
                 }
             }
@@ -42,7 +42,6 @@ impl Storage {
         }
     }
 
-    /// Non-blocking async save
     pub fn save_items_async(&self, items: &[ClipboardItem]) {
         let _ = self.save_sender.send(items.to_vec());
     }
@@ -51,12 +50,12 @@ impl Storage {
         let path = self.data_dir.join("clipboard_history.bin");
         
         if path.exists() {
-            if let Ok(file) = File::open(path) {
-                let reader = BufReader::new(file);
+            if let Ok(file) = File::open(&path) {
+                let reader = BufReader::with_capacity(1024 * 1024, file);
                 if let Ok(mut items) = bincode::deserialize_from::<_, Vec<ClipboardItem>>(reader) {
                     // Recompute hashes after load
                     for item in &mut items {
-                        *item = item.clone().with_hash();
+                        item.recompute_hash();
                     }
                     return items;
                 }

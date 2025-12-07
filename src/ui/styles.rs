@@ -56,8 +56,27 @@ pub fn apply_styles() {
         
         .timestamp {
             font-size: 11px;
-            margin-top: 2px;
             opacity: 0.5;
+        }
+        
+        /* Image styles */
+        .thumbnail {
+            border-radius: 6px;
+            border: 1px solid alpha(@theme_fg_color, 0.1);
+            min-width: 80px;
+            min-height: 40px;
+            max-height: 80px;
+        }
+        
+        .image-dimensions {
+            font-size: 11px;
+            opacity: 0.6;
+            font-family: monospace;
+        }
+        
+        /* Image item gets slightly different styling */
+        .clipboard-item:has(.thumbnail) {
+            padding: 8px;
         }
         "#
     );
