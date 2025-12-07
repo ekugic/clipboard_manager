@@ -51,11 +51,19 @@ pub fn build_ui(app: &adw::Application) -> adw::ApplicationWindow {
     scrolled_window.set_child(Some(&list_box));
 
     // Initial Load
+   // In build_ui(), change initial load:
     {
         let mgr = manager.lock().unwrap();
-        refresh_list(mgr.get_items(), &list_box);
+        let items = mgr.get_items();
+        let recent_items = if items.len() > 15 {
+            &items[..15]  // Only show 15 most recent on startup
+        } else {
+            items
+        };
+        refresh_list(recent_items, &list_box);
     }
 
+    
     // --- CLICK HANDLING ---
     let window_clone = window.clone();
     let manager_click = Arc::clone(&manager);

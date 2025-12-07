@@ -20,10 +20,19 @@ pub fn create_list_row(item: &ClipboardItem) -> ListBoxRow {
     match &item.content {
         ClipboardContent::Text(text) => {
             let vbox = Box::new(Orientation::Vertical, 4);
-            vbox.set_hexpand(true); // Push the pin button to the right
+            vbox.set_hexpand(true);
             
+            // FIX: Use char_indices() to respect UTF-8 boundaries
             let preview = if text.len() > 150 {
-                format!("{}...", &text[..150])
+                let mut end_idx = 150;
+                // Find the last valid char boundary before 150 bytes
+                for (idx, _) in text.char_indices() {
+                    if idx > 150 {
+                        break;
+                    }
+                    end_idx = idx;
+                }
+                format!("{}...", &text[..end_idx])
             } else {
                 text.clone()
             };
@@ -50,11 +59,10 @@ pub fn create_list_row(item: &ClipboardItem) -> ListBoxRow {
     pin_button.add_css_class("pin-button");
     pin_button.add_css_class("flat");
     
-    // Fix: Center vertically so it doesn't stretch on multi-line items
     pin_button.set_valign(Align::Center); 
     pin_button.set_halign(Align::Center);
 
-    let icon_name = "view-pin-symbolic"; // Cleaned up logic
+    let icon_name = "view-pin-symbolic";
     let pin_icon = Image::from_icon_name(icon_name);
     pin_button.set_child(Some(&pin_icon));
 

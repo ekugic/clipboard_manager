@@ -1,5 +1,4 @@
 use gtk4::CssProvider;
-use gtk4::prelude::*;
 
 pub fn apply_styles() {
     let css = CssProvider::new();

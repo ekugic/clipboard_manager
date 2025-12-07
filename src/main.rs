@@ -5,6 +5,7 @@ mod models;
 
 use gtk4::prelude::*; 
 use libadwaita as adw;
+use std::cell::RefCell;
 
 const APP_ID: &str = "com.example.ClipboardManager";
 
@@ -14,22 +15,28 @@ fn main() {
         .flags(gtk4::gio::ApplicationFlags::HANDLES_COMMAND_LINE)
         .build();
     
+    // Store window in app data
+    let window_ref: RefCell<Option<adw::ApplicationWindow>> = RefCell::new(None);
+    
     app.connect_command_line(|app, _| {
         app.activate();
         0
     });
-
     
     app.connect_activate(move |app| {
+        let mut window_opt = window_ref.borrow_mut();
         
-        if let Some(window) = app.windows().first() {
-            if window.is_visible() {
-                window.set_visible(false);
-            } else {
-                window.present();
-            }
+        let window = if let Some(win) = window_opt.as_ref() {
+            win.clone()
         } else {
-            let window = ui::window::build_ui(app);
+            let win = ui::window::build_ui(app);
+            *window_opt = Some(win.clone());
+            win
+        };
+        
+        if window.is_visible() {
+            window.set_visible(false);
+        } else {
             window.present();
         }
     });

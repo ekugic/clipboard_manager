@@ -1,2 +1,2 @@
-cargo build --release
-./target/release/clipboard_manager
+cargo build --release                                                                            INT ✘  ≡ ▓▒░
+./target/release/clipboard_manager &
